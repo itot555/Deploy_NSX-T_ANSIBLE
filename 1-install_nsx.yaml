@@ -1,0 +1,80 @@
+---
+- name: Delete old SSH Keys
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: Remove previous SSH keys from known_hosts
+      command: 'ssh-keygen -R "{{ item.value.ipAddress }}"'
+      register: command_result
+      failed_when: "command_result.rc > 0 and command_result.rc != 255"
+      with_dict: "{{nodes}}"
+      tags: clean_old_keys
+    - name: Set fact for number of controllers
+      set_fact:
+        number_of_controllers: "{{ number_of_controllers }}"
+      tags: set_facts
+
+- name: Deploy NSX-Manager OVA
+  hosts: localhost
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  roles:
+    - { role: nsx-man-ova,
+        hostname: "{{ nodes.nsxMan.hostname }}",
+        vmName: "{{ nodes.nsxMan.vmName }}",
+        ipAddress: "{{ nodes.nsxMan.ipAddress }}",
+        ovaFile: "{{ nodes.nsxMan.ovaFile }}",
+        datastore: "{{ deployDatastoreHost1 }}", 
+        extraPara: " " }
+  tags: nsx-manager
+
+- name: Deploy NSX-Controller OVAs
+  hosts: localhost
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  roles:
+    - { role: nsx-ova,
+        hostname: "{{ nodes.nsxController01.hostname }}",
+        vmName: "{{ nodes.nsxController01.vmName }}",
+        ipAddress: "{{ nodes.nsxController01.ipAddress }}",
+        ovaFile: "{{ nodes.nsxController01.ovaFile }}" ,
+        datastore: "{{ deployDatastoreHost2 }}" }
+    - { role: nsx-ova,
+        hostname: "{{ nodes.nsxController02.hostname }}",
+        vmName: "{{ nodes.nsxController02.vmName }}",
+        ipAddress: "{{ nodes.nsxController02.ipAddress }}",
+        ovaFile: "{{ nsx_controller_filename }}" ,
+        datastore: "{{ deployDatastoreHost3 }}" ,
+        when: number_of_controllers == '3' }
+    - { role: nsx-ova,
+        hostname: "{{ nodes.nsxController03.hostname }}",
+        vmName: "{{ nodes.nsxController03.vmName }}",
+        ipAddress: "{{ nodes.nsxController03.ipAddress }}",
+        ovaFile: "{{ nsx_controller_filename }}" ,
+        datastore: "{{ deployDatastoreHost1}}" ,
+        when: number_of_controllers == '3' }
+  tags: nsx-controller
+
+- name: Deploy NSX-Edge OVA
+  hosts: localhost
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  roles:
+    - { role: nsx-edge-ova,
+        hostname: "{{ nodes.nsxEdge.hostname }}",
+        vmName: "{{ nodes.nsxEdge.vmName }}",
+        ipAddress: "{{ nodes.nsxEdge.ipAddress }}",
+        ovaFile: "{{ nodes.nsxEdge.ovaFile }}",
+        datastore: "{{ deployDatastoreHost3 }}",
+        portgroupExt: "{{ nodes.nsxEdge.portgroupExt }}",
+        portgroupTransport: "{{ nodes.nsxEdge.portgroupTransport }}",
+        deploymentSize: "small" }
+  tags: nsx-edge
+
+

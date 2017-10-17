@@ -1,0 +1,32 @@
+---
+- name: deploy NSX Edge OVA
+  deploy_ova:
+    ovftool_path: "{{ ovfToolPath }}"
+    datacenter: "{{ deployDataCenterName }}"
+    datastore: "{{ datastore }}"
+    portgroup: "{{ deployMgmtPortGroup }}"
+    portgroup_ext: "{{ portgroupExt }}"
+    portgroup_transport: "{{ portgroupTransport }}"
+    cluster: "{{ deployCluster }}"
+    vmname: "{{ vmName }}"
+    hostname: "{{ hostname }}"
+    dns_server: "{{ deployMgmtDnsServer }}"
+    dns_domain: "{{ deployMgmtDnsDomain }}"
+    ntp_server: "{{ deployNtpServers }}"
+    gateway: "{{ deployMgmtDefaultGateway }}"
+    ip_address: "{{ ipAddress }}"
+    netmask: "{{ deployMgmtNetmask }}"
+    admin_password: "{{ nsxAdminPass }}"
+    cli_password: "{{ nsxCliPass }}"
+    ssh_enabled: "{{ sshEnabled }}"
+    allow_ssh_root_login: "{{ allowSSHRootAccess }}"
+    deployment_size: "{{ deploymentSize }}"
+    path_to_ova: "{{ nsxOvaPath }}"
+    ova_file: "{{ ovaFile }}"
+    vcenter: "{{ deployVcIPAddress }}"
+    vcenter_user: "{{ deployVcUser }}"
+    vcenter_passwd: "{{ deployVcPassword }}"
+  register: deploy_nsx_ova
+
+#- debug: var=deploy_nsx_ova
+

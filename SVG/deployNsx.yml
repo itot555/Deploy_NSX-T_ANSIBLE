@@ -1,0 +1,430 @@
+---
+- name: Delete old SSH Keys
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: Remove previous SSH keys from known_hosts
+      command: 'ssh-keygen -R "{{ item.value.ipAddress }}"'
+      register: command_result
+      failed_when: "command_result.rc > 0 and command_result.rc != 255"
+      with_dict: "{{nodes}}"
+      tags: clean_old_keys
+    - name: Set fact for number of controllers
+      set_fact:
+        number_of_controllers: "{{ number_of_controllers }}"
+      tags: set_facts
+
+- name: Deploy NSX-Manager OVA
+  hosts: localhost
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  roles:
+    - { role: nsx-man-ova,
+        hostname: "{{ nodes.nsxMan.hostname }}",
+        vmName: "{{ nodes.nsxMan.vmName }}",
+        ipAddress: "{{ nodes.nsxMan.ipAddress }}",
+        ovaFile: "{{ nodes.nsxMan.ovaFile }}",
+        datastore: "{{ deployDatastoreHost1 }}",
+        extraPara: "CorfuDao: false" }
+  tags: nsx-manager
+
+- name: Deploy NSX-Controller OVAs
+  hosts: localhost
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  roles:
+    - { role: nsx-ova,
+        hostname: "{{ nodes.nsxController01.hostname }}",
+        vmName: "{{ nodes.nsxController01.vmName }}",
+        ipAddress: "{{ nodes.nsxController01.ipAddress }}",
+        ovaFile: "{{ nodes.nsxController01.ovaFile }}" ,
+        datastore: "{{ deployDatastoreHost2 }}" }
+    - { role: nsx-ova,
+        hostname: "{{ nodes.nsxController02.hostname }}",
+        vmName: "{{ nodes.nsxController02.vmName }}",
+        ipAddress: "{{ nodes.nsxController02.ipAddress }}",
+        ovaFile: "{{ nsx_controller_filename }}" ,
+        datastore: "{{ deployDatastoreHost3 }}" ,
+        when: number_of_controllers == '3' }
+    - { role: nsx-ova,
+        hostname: "{{ nodes.nsxController03.hostname }}",
+        vmName: "{{ nodes.nsxController03.vmName }}",
+        ipAddress: "{{ nodes.nsxController03.ipAddress }}",
+        ovaFile: "{{ nsx_controller_filename }}" ,
+        datastore: "{{ deployDatastoreHost1}}" ,
+        when: number_of_controllers == '3' }
+  tags: nsx-controller
+
+- name: Deploy NSX-Edge OVA
+  hosts: localhost
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  roles:
+    - { role: nsx-edge-ova,
+        hostname: "{{ nodes.nsxEdge.hostname }}",
+        vmName: "{{ nodes.nsxEdge.vmName }}",
+        ipAddress: "{{ nodes.nsxEdge.ipAddress }}",
+        ovaFile: "{{ nodes.nsxEdge.ovaFile }}",
+        datastore: "{{ deployDatastoreHost3 }}",
+        portgroupExt: "{{ nodes.nsxEdge.portgroupExt }}",
+        portgroupTransport: "{{ nodes.nsxEdge.portgroupTransport }}",
+        deploymentSize: "small" }
+  tags: nsx-gateway
+
+- name: Wait for manager, first controller and gateway VMs to be reachable
+  hosts:
+    - nsx-managers
+    - nsx-controller01
+    - nsx-edges
+  gather_facts: False
+  tasks:
+    - name: Wait for all VMs
+      local_action: wait_for port=22 host={{ ansible_ssh_host }}
+  tags: wait_for_vms
+
+- name: Wait for second and third controller VMs to be reachable
+  hosts:
+    - nsx-controller02
+    - nsx-controller03
+  gather_facts: False
+  tasks:
+    - name: Wait for all VMs
+      local_action: wait_for port=22 host={{ ansible_ssh_host }}
+      when: hostvars['localhost']['number_of_controllers'] == '3'
+  tags: wait_for_vms
+
+- name: Wait for all Services to be ready
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  tasks:
+    - pause: minutes=3
+
+- name: Populate known_hosts
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: add host to known_hosts
+      shell: 'mkdir -p ~/.ssh; ssh-keyscan -H "{{ item }}" >> ~/.ssh/known_hosts'
+      with_items:
+        - "{{ nodes.nsxMan.ipAddress }}"
+        - "{{ nodes.nsxController01.ipAddress }}"
+        - "{{ nodes.nsxEdge.ipAddress }}"
+    - name: add host to known_hosts
+      shell: 'mkdir -p ~/.ssh; ssh-keyscan -H "{{ item }}" >> ~/.ssh/known_hosts'
+      with_items:
+        - "{{ nodes.nsxController02.ipAddress }}"
+        - "{{ nodes.nsxController03.ipAddress }}"
+      when: hostvars['localhost']['number_of_controllers'] == '3'
+  tags: populate_known_hosts
+
+- name: Retrieve NSX Man thumbprint
+  serial: 1
+  hosts: nsx-manager
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: Retrieve thumbprint
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli
+        -c get certificate api thumbprint
+      register: thumbprint
+  tags: nsxman_thumb
+
+- name: Join first controller and gateway to NSX-Manager
+  hosts:
+    - nsx-controller01
+    - nsx-edges
+  serial: 1
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: Join first controller and gateway to Manager
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli
+        -c join management-plane "{{ nodes.nsxMan.ipAddress }}"
+        username admin
+        thumbprint "{{ hostvars['nsx-manager']['thumbprint']['stdout'] }}"
+        password "{{ nsxAdminPass }}"
+  tags: nsxmanager_join
+
+- name: Join second and third controller and gateway to NSX-Manager
+  hosts:
+    - nsx-controller02
+    - nsx-controller03
+  serial: 1
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: Join second and third controllers and gateways to Manager
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli
+        -c join management-plane "{{ nodes.nsxMan.ipAddress }}"
+        username admin
+        thumbprint "{{ hostvars['nsx-manager']['thumbprint']['stdout'] }}"
+        password "{{ nsxAdminPass }}"
+      when: hostvars['localhost']['number_of_controllers'] == '3'
+  tags: nsxmanager_join
+
+
+- name: Prepare first Controller
+  hosts: nsx-controller01
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: Set security-model on first controller
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli -c
+        set control-cluster security-model shared-secret secret "{{ controllerClusterPass }}"
+    - name: Wait as mentioned in the Install Guide (30 seconds was not enough, so going to 3 minutes)
+      pause: minutes=3
+    - name: Initialize the controller cluster
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli -c initialize control-cluster
+      register: initialize
+    - name: Retry when first try didn't work
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli -c initialize control-cluster
+      when: "'initialization timed out' in initialize.stdout"
+    - name: Retry when first try didn't work
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli -c initialize control-cluster
+      when: "'activation timed out' in initialize.stdout"
+  tags: first_controller
+
+- name: Join the second and third controller on the master
+  hosts:
+    - nsx-controller02
+    - nsx-controller03
+  serial: 1
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: Set security-model on controllers
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli -c
+        set control-cluster security-model shared-secret secret "{{ controllerClusterPass }}"
+      when: hostvars['localhost']['number_of_controllers'] == '3'
+    - name: Retrieve thumbprint
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli
+        -c get control-cluster certificate thumbprint
+      register: thumbprint
+      when: hostvars['localhost']['number_of_controllers'] == '3'
+  tags: secondary_controller_prep
+
+
+- name: Join the second and third controller on the master
+  hosts: nsx-controller01
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: Join second controller to master controller
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli -c
+        join control-cluster "{{ nodes.nsxController02.ipAddress }}"
+        thumbprint "{{ hostvars['nsx-controller02']['thumbprint']['stdout'] }}"
+      when: hostvars['localhost']['number_of_controllers'] == '3'
+    - name: Join third controllers to master controller
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli -c
+        join control-cluster "{{ nodes.nsxController03.ipAddress }}"
+        thumbprint "{{ hostvars['nsx-controller03']['thumbprint']['stdout'] }}"
+      when: hostvars['localhost']['number_of_controllers'] == '3'
+  tags: nsxcontroller_join
+
+- name: Activate first Controller
+  hosts: nsx-controller01
+  serial: 1
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: Activate Controllers
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli -c
+        activate control-cluster
+      register: activate
+    - name: Retry when first try didn't work
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli -c
+        activate control-cluster
+      when: "'activation timed out' in activate.stdout"
+    - name: Wait for 30 seconds, 5 inutes is mentioned in the Install Guide (see PR 1570879)
+      pause: seconds=30
+  tags: nsxcontroller_activate
+
+- name: Activate second and third Controller
+  hosts:
+    - nsx-controller02
+    - nsx-controller03
+  serial: 1
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: Activate Controllers
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli -c
+        activate control-cluster
+      when: hostvars['localhost']['number_of_controllers'] == '3'
+      register: activate
+    - name: Retry when first try didn't work
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli -c
+        activate control-cluster
+      when: ("'activation timed out' in activate.stdout") and (hostvars['localhost']['number_of_controllers'] == '3')
+    - name: Wait for 30 seconds, 5 inutes is mentioned in the Install Guide (see PR 1570879)
+      pause: seconds=30
+      when: hostvars['localhost']['number_of_controllers'] == '3'
+  tags: nsxcontroller_activate
+
+- name: Create Initial Configuration
+  hosts: "{{ api_origin }}"
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  environment:
+    http_proxy: ''
+    https_proxy: ''
+  tasks:
+    - name: Create Transport Zone
+      run_once: true
+      uri:
+        url: https://{{ nodes.nsxMan.ipAddress }}/api/v1/transport-zones
+        method: POST
+        user: admin
+        password: "{{ nsxAdminPass }}"
+        HEADER_Content-Type: "application/json"
+        body: "{ \"display_name\": \"{{ transportZoneName }}\", \"host_switch_name\":\"{{ hostSwitchName }}\", \"description\": \" Created by Ansible\", \"transport_type\":\"{{ tzType }}\" }"
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 201
+        body_format: json
+        use_proxy: no
+      register: tzone
+
+    - name: Create IP Pool
+      run_once: true
+      uri:
+        url: https://{{ nodes.nsxMan.ipAddress }}/api/v1/pools/ip-pools
+        method: POST
+        user: admin
+        password: "{{ nsxAdminPass }}"
+        HEADER_Content-Type: "application/json"
+        body: "{ \"display_name\": \"{{ ippool.name }}\", \"description\": \" Created by Ansible\", \"subnets\": [ { \"allocation_ranges\": [ { \"start\": \"{{ ippool.start }}\", \"end\": \"{{ ippool.end }}\" }   ],\"gateway_ip\": \"{{ ippool.gw }}\", \"cidr\": \"{{ ippool.cidr }}\"  }  ]  }"
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 201
+        body_format: json
+        use_proxy: no
+      register: ippool
+
+    - name: Create Uplink Hostswitch Profile for Overlay
+      run_once: true
+      uri:
+        url: https://{{ nodes.nsxMan.ipAddress }}/api/v1/host-switch-profiles
+        method: POST
+        user: admin
+        password: "{{ nsxAdminPass }}"
+        HEADER_Content-Type: "application/json"
+        body: "{ \"resource_type\" : \"UplinkHostSwitchProfile\", \"description\" : \"Created by Ansible to assign this hostswitch profile to the Edge for overlay\", \"display_name\" : \"nsx-edge-uplink-hostswitch-profile\", \"transport_vlan\" : \"{{ transport_vlan }}\", \"teaming\" : { \"active_list\" : [ { \"uplink_type\" : \"PNIC\", \"uplink_name\" : \"uplink-1\" } ], \"standby_list\" : [ ], \"policy\" : \"FAILOVER_ORDER\" }, \"mtu\" : 1600 } "
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 201
+        body_format: json
+        use_proxy: no
+      register: hsprofile
+
+    - name: Get Edge node UUID
+      uri:
+        url: https://{{ nodes.nsxMan.ipAddress }}/api/v1/fabric/nodes
+        method: GET
+        user: admin
+        password: "{{ nsxAdminPass }}"
+        HEADER_Content-Type: "application/json"
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 200
+        body_format: json
+        use_proxy: no
+      register: edgeuuid
+
+    - name: Create Transport Node from Edge
+      run_once: true
+      uri:
+        url: https://{{ nodes.nsxMan.ipAddress }}/api/v1/transport-nodes
+        method: POST
+        user: admin
+        password: "{{ nsxAdminPass }}"
+        HEADER_Content-Type: "application/json"
+        body: "{ \"description\" : \"Edge Transport Node created by Ansible\", \"display_name\" : \"{{ nodes.nsxEdge.hostname }}\", \"node_id\" : \"{{ edgeuuid.json.results[0].id }}\", \"transport_zone_endpoints\" : [ { \"transport_zone_id\" : \"{{ tzone.json.id }}\" } ], \"host_switches\" : [ { \"host_switch_profile_ids\" : [ { \"value\" : \"{{ hsprofile.json.id }}\", \"key\" : \"UplinkHostSwitchProfile\" } ], \"host_switch_name\" : \"{{ hostSwitchName }}\", \"pnics\" : [ { \"device_name\" : \"fp-eth1\", \"uplink_name\" : \"uplink-1\" } ], \"static_ip_pool_id\" : \"{{ ippool.json.id }}\" } ] } "
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 201
+        body_format: json
+        use_proxy: no
+      register: tnode
+
+    - name: Create Edge Cluster
+      run_once: true
+      uri:
+        url: https://{{ nodes.nsxMan.ipAddress }}/api/v1/edge-clusters
+        method: POST
+        user: admin
+        password: "{{ nsxAdminPass }}"
+        HEADER_Content-Type: "application/json"
+        body: "{ \"cluster_profile_bindings\": [], \"members\": [ { \"transport_node_id\":\"{{ tnode.json.id}}\" } ], \"display_name\": \"EdgeCluster1\", \"description\":\"Created by Ansible\" }"
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 201
+        body_format: json
+        use_proxy: no
+      register: edgecluster
+
+    - name: Get Edge Cluster ID
+      uri:
+        url: https://{{ nodes.nsxMan.ipAddress }}/api/v1/edge-clusters
+        method: GET
+        user: admin
+        password: "{{ nsxAdminPass }}"
+        HEADER_Content-Type: "application/json"
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 200
+        body_format: json
+        use_proxy: no
+      register: edgecl
+
+    - name: Create T0 Router
+      run_once: true
+      uri:
+        url: https://{{ nodes.nsxMan.ipAddress }}/api/v1/logical-routers
+        method: POST
+        user: admin
+        password: "{{ nsxAdminPass }}"
+        HEADER_Content-Type: "application/json"
+        body: "{ \"description\": \"Default T0 Router created by Ansible!!!\", \"display_name\": \"{{ t0.name }}\", \"edge_cluster_id\": \"{{ edgecl.json.results[0].id }}\", \"router_type\": \"TIER0\", \"high_availability_mode\": \"{{ t0.ha }}\" }"
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 201
+        body_format: json
+        use_proxy: no
+      register: t0
+  tags: initialconf
+

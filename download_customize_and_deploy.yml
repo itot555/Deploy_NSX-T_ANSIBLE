@@ -1,0 +1,5 @@
+---
+- include: downloadOVAs.yml
+- include: customizeOVAs.yml
+- include: deployNsx.yml
+- include: prepare_esx_hosts.yml

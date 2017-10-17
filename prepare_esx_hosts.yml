@@ -1,0 +1,76 @@
+---
+- name: Check API origin dependencies
+  hosts: "{{ api_origin }}"
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: Ensure jmespath is installed
+      pip: name=jmespath
+      become: true
+    - name: Remove previous SSH keys from known_hosts - NSX nodes
+      command: ssh-keygen -R "{{ hostvars[item]['ansible_ssh_host'] }}"
+      register: command_result
+      failed_when: "command_result.rc > 0 and command_result.rc != 255"
+      with_items: "{{ groups['nsxtransportnodes'] }}"
+    - name: add host to known_hosts - Managers
+      shell: mkdir -p ~/.ssh; ssh-keyscan -H "{{ hostvars[item]['ansible_ssh_host'] }}" >> ~/.ssh/known_hosts
+      with_items: "{{ groups['nsxtransportnodes'] }}"
+  tags: clean_old_keys
+- name: Get ESX nodes information
+  hosts: nsxtransportnodes
+  gather_facts: True
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: Get SHA-256 SSL thumbprint
+      command: openssl x509 -in /etc/vmware/ssl/rui.crt -fingerprint -sha256 -noout
+      when:
+        - ansible_distribution == "VMkernel"
+      register: thumb
+    - name: Set ssl thumbprint fact
+      set_fact:
+        sslthumb: "{{ thumb.stdout|regex_findall('Fingerprint=(.*)') }}"
+      when:
+        - ansible_distribution == "VMkernel"
+- name: Prepare ESXi nodes
+  hosts: "{{ api_origin }}"
+  gather_facts: False
+  environment:
+    http_proxy: ''
+    https_proxy: ''
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: Get NSX registered ESXi nodes
+      uri:
+        url: https://{{ nodes.nsxMan.ipAddress }}/api/v1/fabric/nodes
+        method: GET
+        user: admin
+        password: "{{ nsxAdminPass }}"
+        HEADER_Content-Type: "application/json"
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 200
+        body_format: json
+        use_proxy: no
+      register: esxnodesregistered
+#    - debug: var=esxnodesregistered
+    - name: Create NSX Managed ESXi node
+      uri:
+        url: https://{{ nodes.nsxMan.ipAddress }}/api/v1/fabric/nodes
+        method: POST
+        user: admin
+        password: "{{ nsxAdminPass }}"
+        HEADER_Content-Type: "application/json"
+        body: "{ \"resource_type\": \"HostNode\", \"display_name\": \"{{ hostvars[item]['ansible_nodename'] }}\", \"ip_addresses\": [ \"{{ hostvars[item]['ansible_ssh_host'] }}\" ], \"os_type\": \"ESXI\", \"os_version\": \"{{ hostvars[item]['ansible_kernel'] }}\", \"host_credential\": { \"username\": \"root\", \"password\": \"{{ hostvars[item]['ansible_ssh_pass'] }}\", \"thumbprint\": \"{{ hostvars[item]['sslthumb'][0] }}\" } }"
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 201
+        body_format: json
+        use_proxy: no
+      with_items: "{{ groups['nsxtransportnodes'] }}"
+      when:
+        - hostvars[item]['ansible_distribution'] == "VMkernel"
+        - hostvars[item]['ansible_nodename'] not in esxnodesregistered|json_query('json.results[*].display_name')
+      register: esxnode

@@ -1,0 +1,194 @@
+---
+
+
+# populate known_hosts so ANSIBLE can ssh to NSX Manager, NSX Controllers and NSX Edge
+- name: Populate known_hosts
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: add host to known_hosts
+      shell: 'mkdir -p ~/.ssh; ssh-keyscan -H "{{ item }}" >> ~/.ssh/known_hosts'
+      with_items:
+        - "{{ nodes.nsxMan.ipAddress }}"
+        - "{{ nodes.nsxController01.ipAddress }}"
+        - "{{ nodes.nsxEdge.ipAddress }}"
+    - name: add host to known_hosts
+      shell: 'mkdir -p ~/.ssh; ssh-keyscan -H "{{ item }}" >> ~/.ssh/known_hosts'
+      with_items:
+        - "{{ nodes.nsxController02.ipAddress }}"
+        - "{{ nodes.nsxController03.ipAddress }}"
+      when: hostvars['localhost']['number_of_controllers'] == '3'
+  tags: populate_known_hosts
+
+
+- name: Retrieve NSX Man thumbprint
+  serial: 1
+  hosts: nsx-manager
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: Retrieve thumbprint
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli
+        -c get certificate api thumbprint
+      register: thumbprint
+  tags: nsxman_thumb
+
+- name: Join first controller and edge to NSX-Manager
+  hosts:
+    - nsx-controller01
+    - nsx-edges
+  serial: 1
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: Join first controller and edge to Manager
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli
+        -c join management-plane "{{ nodes.nsxMan.ipAddress }}"
+        username admin
+        thumbprint "{{ hostvars['nsx-manager']['thumbprint']['stdout'] }}"
+        password "{{ nsxAdminPass }}"
+  tags: nsxmanager_join
+
+- name: Join second and third controller and gateway to NSX-Manager
+  hosts:
+    - nsx-controller02
+    - nsx-controller03
+  serial: 1
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: Join second and third controllers and gateways to Manager
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli
+        -c join management-plane "{{ nodes.nsxMan.ipAddress }}"
+        username admin
+        thumbprint "{{ hostvars['nsx-manager']['thumbprint']['stdout'] }}"
+        password "{{ nsxAdminPass }}"
+      when: hostvars['localhost']['number_of_controllers'] == '3'
+  tags: nsxmanager_join
+
+
+- name: Prepare first Controller
+  hosts: nsx-controller01
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: Set security-model on first controller
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli -c
+        set control-cluster security-model shared-secret secret "{{ controllerClusterPass }}"
+    - name: Wait as mentioned in the Install Guide (30 seconds was not enough, so going to 3 minutes)
+      pause: minutes=3
+    - name: Initialize the controller cluster
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli -c initialize control-cluster
+      register: initialize
+    - name: Retry when first try didn't work
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli -c initialize control-cluster
+      when: "'initialization timed out' in initialize.stdout"
+    - name: Retry when first try didn't work
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli -c initialize control-cluster
+      when: "'activation timed out' in initialize.stdout"
+  tags: first_controller
+
+- name: Join the second and third controller on the master
+  hosts:
+    - nsx-controller02
+    - nsx-controller03
+  serial: 1
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: Set security-model on controllers
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli -c
+        set control-cluster security-model shared-secret secret "{{ controllerClusterPass }}"
+      when: hostvars['localhost']['number_of_controllers'] == '3'
+    - name: Retrieve thumbprint
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli
+        -c get control-cluster certificate thumbprint
+      register: thumbprint
+      when: hostvars['localhost']['number_of_controllers'] == '3'
+  tags: secondary_controller_prep
+
+
+- name: Join the second and third controller on the master
+  hosts: nsx-controller01
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: Join second controller to master controller
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli -c
+        join control-cluster "{{ nodes.nsxController02.ipAddress }}"
+        thumbprint "{{ hostvars['nsx-controller02']['thumbprint']['stdout'] }}"
+      when: hostvars['localhost']['number_of_controllers'] == '3'
+    - name: Join third controllers to master controller
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli -c
+        join control-cluster "{{ nodes.nsxController03.ipAddress }}"
+        thumbprint "{{ hostvars['nsx-controller03']['thumbprint']['stdout'] }}"
+      when: hostvars['localhost']['number_of_controllers'] == '3'
+  tags: nsxcontroller_join
+
+- name: Activate first Controller
+  hosts: nsx-controller01
+  serial: 1
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: Activate Controllers
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli -c
+        activate control-cluster
+      register: activate
+    - name: Retry when first try didn't work
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli -c
+        activate control-cluster
+      when: "'activation timed out' in activate.stdout"
+    - name: Wait for 30 seconds, 5 inutes is mentioned in the Install Guide (see PR 1570879)
+      pause: seconds=30
+  tags: nsxcontroller_activate
+
+- name: Activate second and third Controller
+  hosts:
+    - nsx-controller02
+    - nsx-controller03
+  serial: 1
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: Activate Controllers
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli -c
+        activate control-cluster
+      when: hostvars['localhost']['number_of_controllers'] == '3'
+      register: activate
+    - name: Retry when first try didn't work
+      command: >
+        /opt/vmware/nsx-cli/bin/scripts/nsxcli -c
+        activate control-cluster
+      when: ("'activation timed out' in activate.stdout") and (hostvars['localhost']['number_of_controllers'] == '3')
+    - name: Wait for 30 seconds, 5 inutes is mentioned in the Install Guide (see PR 1570879)
+      pause: seconds=30
+      when: hostvars['localhost']['number_of_controllers'] == '3'
+  tags: nsxcontroller_activate
+
+
