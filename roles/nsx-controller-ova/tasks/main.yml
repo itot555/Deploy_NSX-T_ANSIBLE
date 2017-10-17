@@ -1,11 +1,11 @@
 ---
-- name: deploy NSX OVA
+- name: deploy NSX CONTROLLER OVA
   deploy_ova:
     ovftool_path: "{{ ovfToolPath }}"
     datacenter: "{{ deployDataCenterName }}"
     datastore: "{{ datastore }}"
     portgroup: "{{ deployMgmtPortGroup }}"
-    cluster: "{{ deployCluster }}"
+    cluster: "{{ deployClusterMgmt }}"
     vmname: "{{ vmName }}"
     hostname: "{{ hostname }}"
     dns_server: "{{ deployMgmtDnsServer }}"

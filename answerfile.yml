@@ -1,10 +1,14 @@
 ovfToolPath: '/usr/bin'
 deployDataCenterName: 'Datacenter'
-deployDatastoreHost1: 'NFS-LAB-DATASTORE'
-deployDatastoreHost2: 'NFS-LAB-DATASTORE'
-deployDatastoreHost3: 'NFS-LAB-DATASTORE'
+
 deployMgmtPortGroup: 'CNA-VM'
-deployCluster: 'MGMT-Cluster'
+
+deployClusterMgmt: 'MGMT-Cluster'
+deployDatastoreMgmt: 'NFS-LAB-DATASTORE'
+
+deployClusterComp: 'COMP-Cluster-1'
+deployDatastoreComp: 'NFS-LAB-DATASTORE'
+
 deployMgmtDnsServer: '10.20.20.1'
 deployNtpServers: '10.113.60.176'
 deployMgmtDnsDomain: 'corp.local'
