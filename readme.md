@@ -43,6 +43,7 @@ Create following NSX-T objects:
 ## System requirements
 To run these scripts, you need:
 * 1 ANSIBLE Control Server VM (Ubuntu tested here)
+* OVFtool installed on the VM
 
 Note: you can use you MAC laptop as well.
 
@@ -59,6 +60,16 @@ location of NSX Manager, NSX Controller and NSX Edge OVA files will then be prov
 ## Install ANSIBLE Control Server
 * Install Ubuntu (16.04 used here)
 
+* Install ANSIBLE:
+
+```
+apt-get update
+apt-get install software-properties-common
+apt-add-repository ppa:ansible/ansible
+apt-get update
+apt-get install ansible
+```
+
 * Install OVFtool:
 
 Download bundle from vmware.com (for instance VMware-ovftool-4.2.0-4586971-lin.x86_64.bundle)
@@ -74,93 +85,167 @@ Check:
 ovftool -v
 ```
 
-* Install sshpass:
+
+## Prepare ANSIBLE Control Server
+the playbooks needs some additional Python modules to operate.
+
+Install and Upgrapde pip:
 
 ```
-apt-get install sshpass
+apt install python-pip
+pip install --upgrade pip
+```
+ 
+Install requested Python modules:
+
+```
+pip install requests
+pip install pyVim
+pip install pyOpenSSL
+pip install pyvmomi
 ```
 
 Check:
+```
+pip list
+```
+You should be able to see:
+ansible (2.4.0.0)
+asn1crypto (0.23.0)
+certifi (2017.7.27.1)
+cffi (1.11.2)
+chardet (3.0.4)
+cryptography (2.1.1)
+docopt (0.6.2)
+ecdsa (0.13)
+enum34 (1.1.2)
+httplib2 (0.9.1)
+idna (2.6)
+ipaddress (1.0.16)
+Jinja2 (2.8)
+MarkupSafe (0.23)
+paramiko (1.16.0)
+pip (9.0.1)
+prompt-toolkit (1.0.15)
+pyasn1 (0.1.9)
+pycparser (2.18)
+pycrypto (2.6.1)
+pyflakes (1.6.0)
+Pygments (2.2.0)
+pyOpenSSL (17.3.0)
+pyvim (0.0.21)
+pyvmomi (6.5.0.2017.5.post1)
+PyYAML (3.11)
+requests (2.18.4)
+setuptools (20.7.0)
+six (1.10.0)
+urllib3 (1.22)
+wcwidth (0.1.7)
+wheel (0.29.0)
 
-```
-sshpass -V
-```
-
-* Install jq:
-
-Download jq from https://stedolan.github.io/jq/.
-
-```
-mv jq-linux64 /usr/bin/jq
-chmod +x /usr/bin/jq
-```
-
-Check:
-```
-jq
-```
 
 # Deploy and Configure NSX-T
 
 ## step 1: Install NSX
 
 
-Customize file named 'install_nsx.env' with your environment attributes:
+Customize file named 'hosts' with your environment attributes:
 ```
-# Location of OVA files
-export NSX_MANAGER_OVA_FILE=/DATA/BINARIES/NSX-T-2-0-0/nsx-unified-appliance-2.0.0.0.0.6522097.ova
-export NSX_CONTROLLER_OVA_FILE=/DATA/BINARIES/NSX-T-2-0-0/nsx-controller-2.0.0.0.0.6522091.ova
-export NSX_EDGE_OVA_FILE=/DATA/BINARIES/NSX-T-2-0-0/nsx-edge-2.0.0.0.0.6522113.ova
+[localhost]
+localhost       ansible_connection=local ansible_become_pass=VMware1!
 
-# VM names on vCenter
-export NSX_MANAGER_NAME=NSX-T_manager
-export NSX_CONTROLLER_NAME=NSX-T_controller
-export NSX_EDGE_NAME=NSX-T_edge
 
-# vCenter attributes
-export VCENTER_IP=10.40.206.61
-export VCENTER_USERNAME="administrator@vsphere.local"
-export VCENTER_PASSWORD="VMware1!"
+[nsx-managers]
+nsx-manager 		ansible_ssh_host=10.40.207.33		ansible_ssh_user=root ansible_ssh_pass=VMware1!
 
-# vCenter DC name
-export NSX_HOST_COMMON_DATACENTER=Datacenter
+[nsx-controllers]
+nsx-controller01	ansible_ssh_host=10.40.207.34		ansible_ssh_user=root ansible_ssh_pass=VMware1!
 
-# Compute Cluster (for NSX Edge VM)
-export NSX_HOST_COMPUTE_CLUSTER=COMP-Cluster-1
-export NSX_HOST_COMPUTE_DATASTORE=NFS-LAB-DATASTORE
+[nsx-edges]
+nsx-edge		ansible_ssh_host=10.40.207.35		ansible_ssh_user=root ansible_ssh_pass=VMware1!
 
-# Management Cluster (for NSX Manager and NSX Controller)
-export NSX_HOST_MGMT_CLUSTER=MGMT-Cluster
-export NSX_HOST_MGMT_DATASTORE=NFS-LAB-DATASTORE
+[nsxtransportnodes]
+esx1        ansible_ssh_host=192.168.110.54        ansible_ssh_user=root ansible_ssh_pass=VMware1!
+esx2        ansible_ssh_host=192.168.110.55        ansible_ssh_user=root ansible_ssh_pass=VMware1!
 
-# Network0: MGMT port-group
-# Network1: Edge VTEP port-group
-# Network2: Edge Uplink port-group
-export NSX_HOST_COMMON_NETWORK0=CNA-VM
-export NSX_HOST_COMMON_NETWORK1=NSX-VTEP-PG
-export NSX_HOST_COMMON_NETWORK2=CNA-INFRA
-export NSX_HOST_COMMON_NETWORK3=CNA-INFRA
-
-# NSX Manager, Controller, Edge Network Attributes
-export NSX_MANAGER_IP=10.40.207.33
-export NSX_CONTROLLER_IP=10.40.207.34
-export NSX_EDGE_IP=10.40.207.35
-export NSX_COMMON_PASSWORD="VMware1!"
-export NSX_COMMON_DOMAIN="nsx.vmware.com"
-export NSX_COMMON_NETMASK=255.255.255.0
-export NSX_COMMON_GATEWAY=10.40.207.253
-export NSX_COMMON_DNS=10.20.20.1
-export NSX_COMMON_NTP=10.113.60.176
+[all:vars]
+number_of_controllers='1'
 ```
 
-Source it:
+Customize file named 'answerfile.yml' with your environment attributes:
+
 ```
-source install_nsx.env
+ovfToolPath: '/usr/bin'
+deployDataCenterName: 'Datacenter'
+
+deployMgmtPortGroup: 'CNA-VM'
+
+deployClusterMgmt: 'MGMT-Cluster'
+deployDatastoreMgmt: 'NFS-LAB-DATASTORE'
+
+deployClusterComp: 'COMP-Cluster-1'
+deployDatastoreComp: 'NFS-LAB-DATASTORE'
+
+deployMgmtDnsServer: '10.20.20.1'
+deployNtpServers: '10.113.60.176'
+deployMgmtDnsDomain: 'corp.local'
+deployMgmtDefaultGateway: '10.40.207.253'
+deployMgmtNetmask: '255.255.255.0'
+nsxAdminPass: 'VMware1!'
+nsxCliPass: 'VMware1!'
+nsxOvaPath: '/DATA/BINARIES/NSX-T-2-0-0/'
+deployVcIPAddress: '10.40.206.61'
+deployVcUser: 'administrator@vsphere.local'
+deployVcPassword: 'VMware1!'
+sshEnabled: True
+allowSSHRootAccess: True
+
+nodes:
+  nsxMan:
+    hostname: 'nsx-man.corp.local'
+    vmName: 'NSX-T Manager 01'
+    ipAddress: '10.40.207.33'
+    ovaFile: 'nsx-unified-appliance-2.0.0.0.0.6522097.ova'
+  nsxController01:
+    hostname: 'controller1.corp.local'
+    vmName: 'NSX-T Controller 01'
+    ipAddress: '10.40.207.34'
+    ovaFile: 'nsx-controller-2.0.0.0.0.6522091.ova'
+  nsxEdge:
+    hostname: 'edge.corp.local'
+    vmName: 'NSX-T Edge 01'
+    ipAddress: '10.40.207.35'
+    ovaFile: 'nsx-edge-2.0.0.0.0.6522113.ova'
+    portgroupExt: 'CNA-INFRA'
+    portgroupTransport: 'CNA-INFRA'
+
+controllerClusterPass: 'VMware1!'
+
+api_origin: 'localhost'
+
+ippool:
+  name: 'tep-ip-pool'
+  cidr: '192.168.213.0/24'
+  gw: '192.168.213.1'
+  start: '192.168.213.10'
+  end: '192.168.213.200'
+
+
+transportZoneName: 'tz1'
+hostSwitchName: 'hostswitch1'
+tzType: 'OVERLAY'
+transport_vlan: '0'
+
+t0:
+  name: 'DefaultToRouter'
+#  ha: 'ACTIVE_ACTIVE'
+  ha: 'ACTIVE_STANDBY'
 ```
 
-Then run the first script:
+
+Then run the first playbook:
 ```
-./1-install_nsx.sh
+ansible-playbook ./1-install_nsx.sh
 ```
 
 
@@ -168,33 +253,17 @@ Then run the first script:
 
 Make sure NSX Manager, NSX Controller and NSX Edge are up and running before moving forward.
 
-Run the second script:
+Run the second playbook:
 ```
-./2-enable_nsx_cluster.sh
+ansible-playbook ./2-enable_nsx_cluster.sh
 ```
 
 
 ## Step 3: Configure NSX
 
-Customize file named 'configure_nsx.env' with your environment attributes:
+Run the third playbook:
 ```
-export NETWORK_TUNNEL_IP_POOL_CIDR="192.168.150.0/24"
-export NETWORK_TUNNEL_IP_POOL_ALLOCATION_START="192.168.150.200"
-export NETWORK_TUNNEL_IP_POOL_ALLOCATION_END="192.168.150.250"
-export NETWORK_T0_SUBNET_IP_ADDRESS="10.40.206.20"
-export NETWORK_T0_SUBNET_PREFIX_LENGTH=25
-export NETWORK_T0_GATEWAY="10.40.206.125"
-export NETWORK_HOST_UPLINK_PNIC='vmnic1'
-```
-
-Source it:
-```
-source configure_nsx.env
-```
-
-Then run the third script:
-```
-3-configure_nsx.sh
+ansible-playbook ./3-configure_nsx.sh
 ```
 
 ## END
