@@ -1,0 +1,18 @@
+---
+
+- name: Install NSX OVA
+  import_playbook: 1-install_nsx.yaml
+
+- name: Wait for all Services to be ready
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  tasks:
+    - pause: minutes=3
+
+
+- name: Activate NSX Cluster
+  import_playbook: 2-active_nsx_cluster.yaml
+
+- name: Configure NSX
+  import_playbook: 3-configure_nsx.yaml
