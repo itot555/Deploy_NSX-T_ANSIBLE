@@ -3,11 +3,14 @@ deployDataCenterName: 'Datacenter'
 
 deployMgmtPortGroup: 'CNA-VM'
 
+# NSX Manager and NSX Controllers deployment
 deployClusterMgmt: 'MGMT-Cluster'
 deployDatastoreMgmt: 'NFS-LAB-DATASTORE'
 
-deployClusterComp: 'COMP-Cluster-1'
-deployDatastoreComp: 'NFS-LAB-DATASTORE'
+# NSX Edge deployment
+# Note: is Edge Cluster does not exist, use MGMT Cluster instead
+deployClusterEdge: 'MGMT-Cluster'
+deployDatastoreEdge: 'NFS-LAB-DATASTORE'
 
 deployMgmtDnsServer: '10.20.20.1'
 deployNtpServers: '10.113.60.176'
@@ -40,7 +43,7 @@ nodes:
     ipAddress: '10.40.207.35'
     ovaFile: 'nsx-edge-2.0.0.0.0.6522113.ova'
     portgroupExt: 'CNA-INFRA'
-    portgroupTransport: 'CNA-INFRA'
+    portgroupTransport: 'NSX-EDGE-VTEP-PG'
 
 controllerClusterPass: 'VMware1!'
 

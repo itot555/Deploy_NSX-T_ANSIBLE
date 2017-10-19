@@ -7,7 +7,7 @@
     portgroup: "{{ deployMgmtPortGroup }}"
     portgroup_ext: "{{ portgroupExt }}"
     portgroup_transport: "{{ portgroupTransport }}"
-    cluster: "{{ deployClusterComp }}"
+    cluster: "{{ deployClusterEdge }}"
     vmname: "{{ vmName }}"
     hostname: "{{ hostname }}"
     dns_server: "{{ deployMgmtDnsServer }}"

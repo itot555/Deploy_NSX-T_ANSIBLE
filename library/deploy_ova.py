@@ -112,8 +112,8 @@ def main():
                         '--name={}'.format(module.params['vmname'])]
     if module.params['portgroup_ext']:
         ovf_base_options.extend(['--net:Network 0={}'.format(module.params['portgroup']),
-                                 '--net:Network 1={}'.format(module.params['portgroup_ext']),
-                                 '--net:Network 2={}'.format(module.params['portgroup_transport']),
+                                 '--net:Network 1={}'.format(module.params['portgroup_transport']),
+                                 '--net:Network 2={}'.format(module.params['portgroup_ext']),
                                  '--net:Network 3={}'.format(module.params['portgroup']),
                                  '--deploymentOption={}'.format(module.params['deployment_size'])])
     else:

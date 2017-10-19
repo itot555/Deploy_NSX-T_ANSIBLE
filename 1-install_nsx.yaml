@@ -71,7 +71,7 @@
         vmName: "{{ nodes.nsxEdge.vmName }}",
         ipAddress: "{{ nodes.nsxEdge.ipAddress }}",
         ovaFile: "{{ nodes.nsxEdge.ovaFile }}",
-        datastore: "{{ deployDatastoreComp }}",
+        datastore: "{{ deployDatastoreEdge }}",
         portgroupExt: "{{ nodes.nsxEdge.portgroupExt }}",
         portgroupTransport: "{{ nodes.nsxEdge.portgroupTransport }}",
         deploymentSize: "small" }
