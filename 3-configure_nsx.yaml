@@ -9,7 +9,7 @@
     http_proxy: ''
     https_proxy: ''
   tasks:
-    - name: Create Transport Zone
+    - name: Create Transport Zone - Overlay
       run_once: true
       uri:
         url: https://{{ nodes.nsxMan.ipAddress }}/api/v1/transport-zones
@@ -17,15 +17,32 @@
         user: admin
         password: "{{ nsxAdminPass }}"
         HEADER_Content-Type: "application/json"
-        body: "{ \"display_name\": \"{{ transportZoneName }}\", \"host_switch_name\":\"{{ hostSwitchName }}\", \"description\": \" Created by Ansible\", \"transport_type\":\"{{ tzType }}\" }"
+        body: "{ \"display_name\": \"{{ transportZoneNameOverlay }}\", \"host_switch_name\":\"{{ hostSwitchNameOverlay }}\", \"description\": \" Created by Ansible\", \"transport_type\":\"{{ tzTypeOverlay }}\" }"
         force_basic_auth: yes
         validate_certs: no
         status_code: 201
         body_format: json
         use_proxy: no
-      register: tzone
+      register: tzoneOverlay
 
-    - name: Create IP Pool
+    - name: Create Transport Zone - VLAN
+      run_once: true
+      uri:
+        url: https://{{ nodes.nsxMan.ipAddress }}/api/v1/transport-zones
+        method: POST
+        user: admin
+        password: "{{ nsxAdminPass }}"
+        HEADER_Content-Type: "application/json"
+        body: "{ \"display_name\": \"{{ transportZoneNameVLAN }}\", \"host_switch_name\":\"{{ hostSwitchNameVLAN }}\", \"description\": \" Created by Ansible\", \"transport_type\":\"{{ tzTypeVLAN }}\" }"
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 201
+        body_format: json
+        use_proxy: no
+      register: tzoneVLAN
+
+
+    - name: Create VTEP IP Pool
       run_once: true
       uri:
         url: https://{{ nodes.nsxMan.ipAddress }}/api/v1/pools/ip-pools
@@ -41,7 +58,7 @@
         use_proxy: no
       register: ippool
 
-    - name: Create Uplink Hostswitch Profile for Overlay
+    - name: Create Unique Edge Uplink Hostswitch Profile for Overlay and VLAN
       run_once: true
       uri:
         url: https://{{ nodes.nsxMan.ipAddress }}/api/v1/host-switch-profiles
@@ -79,7 +96,7 @@
         user: admin
         password: "{{ nsxAdminPass }}"
         HEADER_Content-Type: "application/json"
-        body: "{ \"description\" : \"Edge Transport Node created by Ansible\", \"display_name\" : \"{{ nodes.nsxEdge.hostname }}\", \"node_id\" : \"{{ edgeuuid.json.results[0].id }}\", \"transport_zone_endpoints\" : [ { \"transport_zone_id\" : \"{{ tzone.json.id }}\" } ], \"host_switches\" : [ { \"host_switch_profile_ids\" : [ { \"value\" : \"{{ hsprofile.json.id }}\", \"key\" : \"UplinkHostSwitchProfile\" } ], \"host_switch_name\" : \"{{ hostSwitchName }}\", \"pnics\" : [ { \"device_name\" : \"fp-eth1\", \"uplink_name\" : \"uplink-1\" } ], \"static_ip_pool_id\" : \"{{ ippool.json.id }}\" } ] } "
+        body: "{ \"description\" : \"Edge Transport Node created by Ansible\", \"display_name\" : \"{{ nodes.nsxEdge.hostname }}\", \"node_id\" : \"{{ edgeuuid.json.results[0].id }}\", \"transport_zone_endpoints\" : [ { \"transport_zone_id\" : \"{{ tzoneOverlay.json.id }}\" } , { \"transport_zone_id\" : \"{{ tzoneVLAN.json.id }}\" } ], \"host_switches\" : [ { \"host_switch_profile_ids\" : [ { \"value\" : \"{{ hsprofile.json.id }}\", \"key\" : \"UplinkHostSwitchProfile\" } ], \"host_switch_name\" : \"{{ hostSwitchNameOverlay }}\", \"pnics\" : [ { \"device_name\" : \"fp-eth0\", \"uplink_name\" : \"uplink-1\" } ], \"static_ip_pool_id\" : \"{{ ippool.json.id }}\" } , { \"host_switch_profile_ids\" : [ { \"value\" : \"{{ hsprofile.json.id }}\", \"key\" : \"UplinkHostSwitchProfile\" } ], \"host_switch_name\" : \"{{ hostSwitchNameVLAN }}\", \"pnics\" : [ { \"device_name\" : \"fp-eth1\", \"uplink_name\" : \"uplink-1\" } ]  } ] } "
         force_basic_auth: yes
         validate_certs: no
         status_code: 201

@@ -57,9 +57,14 @@ ippool:
   end: '192.168.213.200'
 
 
-transportZoneName: 'tz1'
-hostSwitchName: 'hostswitch1'
-tzType: 'OVERLAY'
+transportZoneNameOverlay: 'TZ_OVERLAY'
+hostSwitchNameOverlay: 'hostswitch1-overlay'
+tzTypeOverlay: 'OVERLAY'
+
+transportZoneNameVLAN: 'TZ_VLAN'
+hostSwitchNameVLAN: 'hostswitch2-vlan'
+tzTypeVLAN: 'VLAN'
+
 transport_vlan: '0'
 
 t0:
