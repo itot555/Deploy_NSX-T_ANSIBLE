@@ -8,7 +8,7 @@ deployClusterMgmt: 'MGMT-Cluster'
 deployDatastoreMgmt: 'NFS-LAB-DATASTORE'
 
 # NSX Edge deployment
-# Note: is Edge Cluster does not exist, use MGMT Cluster instead
+# Note: if Edge Cluster does not exist, use MGMT Cluster instead
 deployClusterEdge: 'MGMT-Cluster'
 deployDatastoreEdge: 'NFS-LAB-DATASTORE'
 
