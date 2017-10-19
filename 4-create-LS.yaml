@@ -1,0 +1,29 @@
+---
+
+- name: Create Initial Configuration
+  hosts: "{{ api_origin }}"
+  gather_facts: False
+  vars_files:
+    - answerfile.yml
+  environment:
+    http_proxy: ''
+    https_proxy: ''
+  tasks:
+
+    - name: Create Edge Uplink LS
+      run_once: true
+      uri:
+        url: https://{{ nodes.nsxMan.ipAddress }}/api/v1/logical-switches
+        method: POST
+        user: admin
+        password: "{{ nsxAdminPass }}"
+        HEADER_Content-Type: "application/json"
+        body: "{ \"transport_zone_id\": \"a0186392-7b2b-46ed-ae59-33e1a3854c5e\", \"replication_mode\": \"MTEP\", \"admin_state\": \"UP\", \"display_name\": \"{{ t0.lsUplink }}\" , \"vlan\": 0 }"
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 201
+        body_format: json
+        use_proxy: no
+      register: t0
+  tags: initialconf
+

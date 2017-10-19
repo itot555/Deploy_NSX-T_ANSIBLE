@@ -67,7 +67,9 @@ tzTypeVLAN: 'VLAN'
 
 transport_vlan: '0'
 
+EdgeUplinkLS: 'LS-Edge-Uplink'
+
 t0:
-  name: 'DefaultToRouter'
-#  ha: 'ACTIVE_ACTIVE'
+  name: 'Default-T0-Router'
+# ha: 'ACTIVE_ACTIVE'
   ha: 'ACTIVE_STANDBY'

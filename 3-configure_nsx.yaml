@@ -149,5 +149,21 @@
         body_format: json
         use_proxy: no
       register: t0
-  tags: initialconf
+
+
+    - name: Create Edge Uplink LS
+      run_once: true
+      uri:
+        url: https://{{ nodes.nsxMan.ipAddress }}/api/v1/logical-switches
+        method: POST
+        user: admin
+        password: "{{ nsxAdminPass }}"
+        HEADER_Content-Type: "application/json"
+        body: "{ \"transport_zone_id\": \"{{ tzoneVLAN.json.id }}\", \"replication_mode\": \"MTEP\", \"admin_state\": \"UP\", \"display_name\": \"{{ EdgeUplinkLS }}\" , \"vlan\": \"0\" }"
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 201
+        body_format: json
+        use_proxy: no
+      register: edge-uplink-ls
 
