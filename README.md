@@ -8,6 +8,7 @@ Playbooks are:
 * 1-install_nsx.yaml
 * 2-activate_nsx_cluster.yaml
 * 3-configure_nsx.yaml
+* 4-prepare_esx_hosts.yaml
 
 A final playbook 'all-install_activate_configure_nsx.yaml' uses the aboves playbooks in sequence.
 You have the choice to either launch each playbook one after the other (advantage is to check all steps) - or - launch the 
@@ -15,29 +16,35 @@ You have the choice to either launch each playbook one after the other (advantag
 
 
 #### 1-install_nsx.yaml
-Creates the following NSX-T components:
+Deploys the following NSX-T components from OVAs:
 * 1 NSX Manager (NSX Manager will be instantiated in the MGMT cluster)
 * 1 NSX Controller (NSX Controller will be instantiated in the MGMT cluster) [option to set to 3 Controllers]
-* 1 NSX Edge ((NSX Edge will be instantiated in the COMPUTE cluster)
+* 1 NSX Edge ((NSX Edge will be instantiated in the EDGE cluster)
 
 #### 2-activate_nsx_cluster.yaml
-* Form NSX-T cluster (NSX Controller and NSX Edge will be registered with NSX Manager)
+Activate NSX-T cluster:
+* Register NSX Controller to NSX Manager
+* Register NSX Edge to NSX Manager
+* Activate control-cluster
+
 
 #### 3-configure_nsx.yaml
 Create following NSX-T objects:
-* Creating VLAN transport zone
-* Creating OVERLAY transport zone
-* Creating uplink profile
-* Creating IP address pool
-* Configuring Edge transport node
-* Creating Edge cluster
-* Creating T0 router
-* Creating logical switch
-* Creating logical port
-* Creating router port
-* Adding static route
-* Creating T1 router
+* VLAN Transport Zone
+* OVERLAY Transport Zone
+* Edge Uplink Profile
+* VTEP IP address pool
+* Edge Cluster
+* Edge Transport Node
+* T0 router
+* Logical Switch for Edge Uplink
+* logical Port (on Logical Switch for Edge Uplink)
+* Edge Uplink Router Port
+* Default static route for Edge Uplink Router Port
 
+#### 4-prepare_esx_hosts.yaml
+Adds all ESXi hosts as NSX Hosts (prep hosts).
+Does not create ESXi Transport Nodes.
 
 
 ## System requirements
@@ -103,7 +110,10 @@ pip install requests
 pip install pyVim
 pip install pyOpenSSL
 pip install pyvmomi
+pip install jmespath
 ```
+
+Note: 'jmespath' module is required only for the playbook '4-prepare_esx_hosts.yaml'
 
 Check:
 ```
@@ -264,6 +274,14 @@ ansible-playbook ./2-enable_nsx_cluster.sh
 Run the third playbook:
 ```
 ansible-playbook ./3-configure_nsx.sh
+```
+
+
+## Step 4: Prepare ESXi Hosts
+
+Run the fourth playbook:
+```
+ansible-playbook ./4-prepare_esx_hosts.yaml
 ```
 
 ## END
