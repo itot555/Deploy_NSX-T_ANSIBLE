@@ -284,6 +284,8 @@ Run the fourth playbook:
 ```
 ansible-playbook ./4-prepare_esx_hosts.yaml
 ```
+You may need to run this ansible playbook 2 times during the first operation.
+
 
 ## END
 
