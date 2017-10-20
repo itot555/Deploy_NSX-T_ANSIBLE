@@ -67,9 +67,12 @@ tzTypeVLAN: 'VLAN'
 
 transport_vlan: '0'
 
-EdgeUplinkLS: 'LS-Edge-Uplink'
 
 t0:
   name: 'Default-T0-Router'
 # ha: 'ACTIVE_ACTIVE'
   ha: 'ACTIVE_STANDBY'
+  EdgeUplinkLS: 'LS-Edge-Uplink'
+  UplinkIP: '10.40.206.20'
+  UplinkPrefixLength: '25'
+  UplinkDefaultGW: '10.40.206.125'

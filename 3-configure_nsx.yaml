@@ -148,7 +148,7 @@
         status_code: 201
         body_format: json
         use_proxy: no
-      register: t0
+      register: T0Router
 
 
     - name: Create Edge Uplink LS
@@ -159,11 +159,63 @@
         user: admin
         password: "{{ nsxAdminPass }}"
         HEADER_Content-Type: "application/json"
-        body: "{ \"transport_zone_id\": \"{{ tzoneVLAN.json.id }}\", \"replication_mode\": \"MTEP\", \"admin_state\": \"UP\", \"display_name\": \"{{ EdgeUplinkLS }}\" , \"vlan\": \"0\" }"
+        body: "{ \"transport_zone_id\": \"{{ tzoneVLAN.json.id }}\", \"replication_mode\": \"MTEP\", \"admin_state\": \"UP\", \"display_name\": \"{{ t0.EdgeUplinkLS }}\" , \"vlan\": \"0\" }"
         force_basic_auth: yes
         validate_certs: no
         status_code: 201
         body_format: json
         use_proxy: no
-      register: edge-uplink-ls
+      register: Edge_Uplink_LS_Res
+
+
+    - name: Create Logical Port on Edge Uplink LS to Connect to T0 Router
+      run_once: true
+      uri:
+        url: https://{{ nodes.nsxMan.ipAddress }}/api/v1/logical-ports
+        method: POST
+        user: admin
+        password: "{{ nsxAdminPass }}"
+        HEADER_Content-Type: "application/json"
+        body: "{ \"display_name\": \"LP-Connect-T0\", \"logical_switch_id\": \"{{ Edge_Uplink_LS_Res.json.id }}\", \"admin_state\": \"UP\" }"
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 201
+        body_format: json
+        use_proxy: no
+      register: Edge_Uplink_LS_LP
+
+
+
+
+    - name: Create T0 Uplink Router Port
+      run_once: true
+      uri:
+        url: https://{{ nodes.nsxMan.ipAddress }}/api/v1/logical-router-ports
+        method: POST
+        user: admin
+        password: "{{ nsxAdminPass }}"
+        HEADER_Content-Type: "application/json"
+        body: "{ \"display_name\": \"T0 Uplink Routed Port\", \"resource_type\": \"LogicalRouterUpLinkPort\", \"logical_router_id\": \"{{ T0Router.json.id }}\", \"linked_logical_switch_port_id\": { \"target_type\": \"LogicalPort\" , \"target_id\": \"{{ Edge_Uplink_LS_LP.json.id }}\" } , \"edge_cluster_member_index\": [0] , \"subnets\": [ { \"ip_addresses\": [ \"{{ t0.UplinkIP }}\" ] , \"prefix_length\": \"{{ t0.UplinkPrefixLength}}\" } ] }"
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 201
+        body_format: json
+        use_proxy: no
+      register: T0Router_Uplink_RP
+
+
+    - name: T0 Default Static Route
+      run_once: true
+      uri:
+        url: https://{{ nodes.nsxMan.ipAddress }}/api/v1/logical-routers/{{ T0Router.json.id }}/routing/static-routes
+        method: POST
+        user: admin
+        password: "{{ nsxAdminPass }}"
+        HEADER_Content-Type: "application/json"
+        body: "{ \"resource_type\": \"StaticRoute\", \"network\": \"0.0.0.0/0\", \"next_hops\": [ { \"administrative_distance\" : \"1\" , \"ip_address\":  \"{{ t0.UplinkDefaultGW }}\" } ] }"
+        force_basic_auth: yes
+        validate_certs: no
+        status_code: 201
+        body_format: json
+        use_proxy: no
 
