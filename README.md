@@ -57,7 +57,8 @@ Note: you can use you MAC laptop as well.
 ## Lab requirements
 NSX-T will be deployed in the lab with the following config:
 * 1 MGMT cluster (will host NSX Manager and NSX Controller)
-* 1 COMPUTE cluster (will host NSX Edge)
+* 1 COMPUTE cluster
+* 1 EDGE cluster (if Edge cluster does not exist, deploy NSX EDGE VM in MGMT cluster)
 
 ## OVA bits
 It's up to the user to download all NSX OVA bits (from vmware.com for instance).
