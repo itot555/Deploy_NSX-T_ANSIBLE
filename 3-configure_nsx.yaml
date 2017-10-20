@@ -215,7 +215,7 @@
         body: "{ \"resource_type\": \"StaticRoute\", \"network\": \"0.0.0.0/0\", \"next_hops\": [ { \"administrative_distance\" : \"1\" , \"ip_address\":  \"{{ t0.UplinkDefaultGW }}\" } ] }"
         force_basic_auth: yes
         validate_certs: no
-        status_code: 201
+        status_code: 200
         body_format: json
         use_proxy: no
 
